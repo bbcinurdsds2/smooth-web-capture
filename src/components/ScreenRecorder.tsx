@@ -30,8 +30,8 @@ export const ScreenRecorder = () => {
 
   const recordingOptions: RecordingOptions = {
     video: {
-      width: 3840, // 4K for maximum quality
-      height: 2160,
+      width: 1920, // 1080p for optimal performance
+      height: 1080,
       frameRate: 60,
     },
     audio: audioEnabled,
@@ -76,9 +76,9 @@ export const ScreenRecorder = () => {
 
       streamRef.current = stream;
       
-      // Try different codecs for maximum compatibility and quality
+      // Try different codecs for optimal playback performance
       let mimeType = '';
-      let videoBitsPerSecond = 50000000; // 50 Mbps for maximum quality
+      let videoBitsPerSecond = 12000000; // 12 Mbps - optimal for 1080p 60fps
       
       const supportedTypes = [
         'video/webm;codecs=vp9,opus',
@@ -99,7 +99,7 @@ export const ScreenRecorder = () => {
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType,
         videoBitsPerSecond,
-        audioBitsPerSecond: 320000 // High quality audio
+        audioBitsPerSecond: 128000 // Optimized audio bitrate
       });
 
       mediaRecorderRef.current = mediaRecorder;
@@ -218,19 +218,19 @@ export const ScreenRecorder = () => {
             </h1>
           </div>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Professional 4K 60fps screen recording with maximum quality encoding
+            Professional 1080p 60fps screen recording optimized for smooth playback
           </p>
           
           {/* Quality Badge */}
           <div className="flex justify-center gap-2">
             <Badge variant="secondary" className="text-sm">
-              4K (3840×2160)
+              1920×1080
             </Badge>
             <Badge variant="secondary" className="text-sm">
               60 FPS
             </Badge>
             <Badge variant="secondary" className="text-sm">
-              50 Mbps
+              12 Mbps
             </Badge>
           </div>
         </div>
@@ -344,7 +344,7 @@ export const ScreenRecorder = () => {
             <Monitor className="w-12 h-12 mx-auto mb-4 text-primary" />
             <h3 className="text-lg font-semibold mb-2">High Quality</h3>
             <p className="text-sm text-muted-foreground">
-              4K resolution at 60fps with 50 Mbps bitrate for ultra-high quality recordings
+              1080p resolution at 60fps with 12 Mbps bitrate optimized for smooth playback
             </p>
           </Card>
           <Card className="p-6 text-center">
