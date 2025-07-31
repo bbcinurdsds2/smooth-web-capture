@@ -30,8 +30,8 @@ export const ScreenRecorder = () => {
 
   const recordingOptions: RecordingOptions = {
     video: {
-      width: 1920,
-      height: 1080,
+      width: 3840, // 4K for maximum quality
+      height: 2160,
       frameRate: 60,
     },
     audio: audioEnabled,
@@ -59,20 +59,47 @@ export const ScreenRecorder = () => {
 
   const startRecording = async () => {
     try {
+      // Enhanced display media constraints for maximum quality
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
-          width: recordingOptions.video.width,
-          height: recordingOptions.video.height,
-          frameRate: recordingOptions.video.frameRate,
-        },
-        audio: recordingOptions.audio,
-      });
+          width: { ideal: recordingOptions.video.width, max: recordingOptions.video.width },
+          height: { ideal: recordingOptions.video.height, max: recordingOptions.video.height },
+          frameRate: { ideal: recordingOptions.video.frameRate, max: recordingOptions.video.frameRate }
+        } as any,
+        audio: recordingOptions.audio ? {
+          echoCancellation: false,
+          noiseSuppression: false,
+          sampleRate: 48000,
+          channelCount: 2
+        } : false
+      } as any);
 
       streamRef.current = stream;
       
+      // Try different codecs for maximum compatibility and quality
+      let mimeType = '';
+      let videoBitsPerSecond = 50000000; // 50 Mbps for maximum quality
+      
+      const supportedTypes = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus', 
+        'video/webm;codecs=h264,opus',
+        'video/webm',
+        'video/mp4;codecs=h264,aac',
+        'video/mp4'
+      ];
+      
+      for (const type of supportedTypes) {
+        if (MediaRecorder.isTypeSupported(type)) {
+          mimeType = type;
+          break;
+        }
+      }
+      
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'video/webm;codecs=vp9',
-        videoBitsPerSecond: 8000000, // 8 Mbps for high quality 1080p
+        mimeType,
+        videoBitsPerSecond,
+        audioBitsPerSecond: 320000 // High quality audio
       });
 
       mediaRecorderRef.current = mediaRecorder;
@@ -191,19 +218,19 @@ export const ScreenRecorder = () => {
             </h1>
           </div>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Professional 1080p 60fps screen recording with high-quality encoding
+            Professional 4K 60fps screen recording with maximum quality encoding
           </p>
           
           {/* Quality Badge */}
           <div className="flex justify-center gap-2">
             <Badge variant="secondary" className="text-sm">
-              1920×1080
+              4K (3840×2160)
             </Badge>
             <Badge variant="secondary" className="text-sm">
               60 FPS
             </Badge>
             <Badge variant="secondary" className="text-sm">
-              8 Mbps
+              50 Mbps
             </Badge>
           </div>
         </div>
@@ -317,7 +344,7 @@ export const ScreenRecorder = () => {
             <Monitor className="w-12 h-12 mx-auto mb-4 text-primary" />
             <h3 className="text-lg font-semibold mb-2">High Quality</h3>
             <p className="text-sm text-muted-foreground">
-              1080p resolution at 60fps with 8 Mbps bitrate for crystal clear recordings
+              4K resolution at 60fps with 50 Mbps bitrate for ultra-high quality recordings
             </p>
           </Card>
           <Card className="p-6 text-center">
