@@ -76,16 +76,16 @@ export const ScreenRecorder = () => {
 
       streamRef.current = stream;
       
-      // Try different codecs for optimal playback performance
+      // Prioritize H.264 for best compatibility and longer recordings
       let mimeType = '';
-      let videoBitsPerSecond = 12000000; // 12 Mbps - optimal for 1080p 60fps
+      let videoBitsPerSecond = 8000000; // 8 Mbps - optimized for longer recordings
       
       const supportedTypes = [
-        'video/webm;codecs=vp9,opus',
-        'video/webm;codecs=vp8,opus', 
-        'video/webm;codecs=h264,opus',
+        'video/webm;codecs=h264,opus', // H.264 first for best performance
+        'video/mp4;codecs=h264,aac',   // MP4 H.264 fallback
+        'video/webm;codecs=vp9,opus',  // VP9 fallback
+        'video/webm;codecs=vp8,opus',  // VP8 fallback
         'video/webm',
-        'video/mp4;codecs=h264,aac',
         'video/mp4'
       ];
       
@@ -125,7 +125,7 @@ export const ScreenRecorder = () => {
         stopRecording();
       });
 
-      mediaRecorder.start(1000); // Collect data every second
+      mediaRecorder.start(250); // Collect data every 250ms for smoother recording
       setIsRecording(true);
       setRecordingTime(0);
       startTimer();
@@ -230,7 +230,7 @@ export const ScreenRecorder = () => {
               60 FPS
             </Badge>
             <Badge variant="secondary" className="text-sm">
-              12 Mbps
+              8 Mbps H.264
             </Badge>
           </div>
         </div>
