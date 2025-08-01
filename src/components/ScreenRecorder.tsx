@@ -1,9 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Monitor, Square, Play, Pause, Download, Settings, Mic, MicOff, Cpu, Zap } from "lucide-react";
+import { Monitor, Cpu, Zap } from "lucide-react";
+import { RecordingControls } from "./RecordingControls";
+import { FormatSelector, ExportFormat } from "./FormatSelector";
 
 interface RecordingOptions {
   video: {
@@ -12,6 +14,10 @@ interface RecordingOptions {
     frameRate: number;
   };
   audio: boolean;
+}
+
+interface ScreenRecorderProps {
+  onBack?: () => void;
 }
 
 interface BrowserInfo {
@@ -23,7 +29,7 @@ interface BrowserInfo {
   supportsHardwareAcceleration: boolean;
 }
 
-export const ScreenRecorder = () => {
+export const ScreenRecorder = ({ onBack }: ScreenRecorderProps) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [recordedChunks, setRecordedChunks] = useState<Blob[]>([]);
@@ -33,6 +39,7 @@ export const ScreenRecorder = () => {
   const [browserInfo, setBrowserInfo] = useState<BrowserInfo | null>(null);
   const [selectedCodec, setSelectedCodec] = useState<string>('');
   const [useVBR, setUseVBR] = useState(true);
+  const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('webm');
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -132,8 +139,8 @@ export const ScreenRecorder = () => {
 
   const recordingOptions: RecordingOptions = {
     video: {
-      width: 1920, // 1080p for optimal performance
-      height: 1080,
+      width: 3840, // 4K for studio quality
+      height: 2160,
       frameRate: 60,
     },
     audio: audioEnabled,
@@ -181,13 +188,13 @@ export const ScreenRecorder = () => {
       // Use browser-optimized codec selection
       const mimeType = selectedCodec || 'video/webm';
       
-      // Calculate optimal bitrate based on browser and VBR setting
-      let videoBitsPerSecond = 8000000; // 8 Mbps base
+      // Calculate optimal bitrate for studio quality
+      let videoBitsPerSecond = 25000000; // 25 Mbps base for 4K
       
       if (browserInfo?.isChrome && browserInfo.supportsHardwareAcceleration) {
-        videoBitsPerSecond = 10000000; // 10 Mbps for Chrome with HW acceleration
+        videoBitsPerSecond = 30000000; // 30 Mbps for Chrome with HW acceleration
       } else if (browserInfo?.isFirefox) {
-        videoBitsPerSecond = 7000000; // 7 Mbps for Firefox optimization
+        videoBitsPerSecond = 22000000; // 22 Mbps for Firefox optimization
       }
       
       // VBR configuration - allow fluctuation for better quality/size balance
@@ -236,7 +243,7 @@ export const ScreenRecorder = () => {
       
       toast({
         title: "Recording started",
-        description: `Recording at ${recordingOptions.video.width}x${recordingOptions.video.height} @ ${recordingOptions.video.frameRate}fps`,
+        description: `Studio quality: ${recordingOptions.video.width}x${recordingOptions.video.height} @ ${recordingOptions.video.frameRate}fps`,
       });
     } catch (error) {
       toast({
@@ -281,13 +288,32 @@ export const ScreenRecorder = () => {
     }
   };
 
-  const downloadRecording = () => {
+  const downloadRecording = (format: ExportFormat) => {
     if (recordedChunks.length > 0) {
-      const blob = new Blob(recordedChunks, { type: 'video/webm' });
+      let mimeType = 'video/webm';
+      let extension = 'webm';
+      
+      switch (format) {
+        case 'mp4':
+          mimeType = 'video/mp4';
+          extension = 'mp4';
+          break;
+        case 'mov':
+          mimeType = 'video/quicktime';
+          extension = 'mov';
+          break;
+        case 'webm':
+        default:
+          mimeType = 'video/webm';
+          extension = 'webm';
+          break;
+      }
+      
+      const blob = new Blob(recordedChunks, { type: mimeType });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `screen-recording-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.webm`;
+      a.download = `studio-recording-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.${extension}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -295,7 +321,7 @@ export const ScreenRecorder = () => {
       
       toast({
         title: "Download started",
-        description: "Your screen recording is being downloaded.",
+        description: `Your ${format.toUpperCase()} recording is being downloaded.`,
       });
     }
   };
@@ -314,32 +340,35 @@ export const ScreenRecorder = () => {
         {/* Header */}
         <div className="text-center space-y-4">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="p-3 rounded-full bg-gradient-primary">
+            <div className="p-3 rounded-full bg-gradient-primary shadow-glow">
               <Monitor className="w-8 h-8 text-primary-foreground" />
             </div>
             <h1 className="text-4xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-              Pro Screen Recorder
+              Studio Screen Recorder
             </h1>
           </div>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Professional 1080p 60fps screen recording optimized for smooth playback
+            Professional 4K 60fps studio-quality recording with hardware acceleration
           </p>
           
           {/* Quality Badge */}
           <div className="flex justify-center gap-2 flex-wrap">
-            <Badge variant="secondary" className="text-sm">
-              1920×1080
+            <Badge variant="secondary" className="text-sm px-3 py-1">
+              4K Ultra HD
             </Badge>
-            <Badge variant="secondary" className="text-sm">
+            <Badge variant="secondary" className="text-sm px-3 py-1">
               60 FPS
             </Badge>
+            <Badge variant="secondary" className="text-sm px-3 py-1">
+              25+ Mbps
+            </Badge>
             {browserInfo && (
-              <Badge variant="secondary" className="text-sm flex items-center gap-1">
+              <Badge variant="secondary" className="text-sm flex items-center gap-1 px-3 py-1">
                 {browserInfo.supportsHardwareAcceleration && <Zap className="w-3 h-3" />}
                 {browserInfo.name}
               </Badge>
             )}
-            <Badge variant="secondary" className="text-sm">
+            <Badge variant="secondary" className="text-sm px-3 py-1">
               {selectedCodec.includes('vp9') ? 'VP9' : selectedCodec.includes('h264') ? 'H.264' : 'Auto'} {useVBR ? 'VBR' : 'CBR'}
             </Badge>
           </div>
@@ -367,136 +396,87 @@ export const ScreenRecorder = () => {
           </Card>
         )}
 
-        {/* Main Controls */}
-        <Card className="p-8 shadow-soft">
-          <div className="space-y-6">
-            {/* Recording Options */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Audio Toggle */}
-              <Button
-                variant={audioEnabled ? "default" : "outline"}
-                size="lg"
-                onClick={() => setAudioEnabled(!audioEnabled)}
-                disabled={isRecording}
-                className="flex items-center gap-2"
-              >
-                {audioEnabled ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
-                {audioEnabled ? 'Audio On' : 'Audio Off'}
-              </Button>
-              
-              {/* VBR Toggle */}
-              <Button
-                variant={useVBR ? "default" : "outline"}
-                size="lg"
-                onClick={() => setUseVBR(!useVBR)}
-                disabled={isRecording}
-                className="flex items-center gap-2"
-              >
-                <Settings className="w-5 h-5" />
-                {useVBR ? 'VBR Mode' : 'CBR Mode'}
-              </Button>
-              
-              {/* Browser Info */}
-              <div className="flex items-center justify-center gap-2 p-3 rounded-lg border bg-card">
-                <Cpu className="w-5 h-5 text-muted-foreground" />
-                <span className="text-sm font-medium">
-                  {browserInfo?.name || 'Detecting...'}
-                </span>
-                {browserInfo?.supportsHardwareAcceleration && (
-                  <Zap className="w-4 h-4 text-yellow-500" />
-                )}
-              </div>
-            </div>
-
-            {/* Recording Controls */}
-            <div className="flex items-center justify-center gap-4">
-              {!isRecording ? (
-                <Button
-                  variant="record"
-                  size="xl"
-                  onClick={startRecording}
-                  className="min-w-[200px]"
-                >
-                  <Monitor className="w-6 h-6" />
-                  Start Recording
-                </Button>
-              ) : (
-                <div className="flex gap-3">
-                  <Button
-                    variant={isPaused ? "default" : "secondary"}
-                    size="lg"
-                    onClick={pauseRecording}
-                  >
-                    {isPaused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
-                    {isPaused ? 'Resume' : 'Pause'}
-                  </Button>
-                  <Button
-                    variant="stop"
-                    size="lg"
-                    onClick={stopRecording}
-                  >
-                    <Square className="w-5 h-5" />
-                    Stop
-                  </Button>
-                </div>
+        {/* Browser Info */}
+        <Card className="p-4 bg-gradient-secondary border-border/50">
+          <div className="flex items-center justify-center gap-6 text-sm">
+            <div className="flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-muted-foreground" />
+              <span className="font-medium">
+                {browserInfo?.name || 'Detecting...'}
+              </span>
+              {browserInfo?.supportsHardwareAcceleration && (
+                <Zap className="w-4 h-4 text-yellow-500" />
               )}
             </div>
+            <div className="text-muted-foreground">•</div>
+            <div>Codec: {selectedCodec.includes('vp9') ? 'VP9' : selectedCodec.includes('h264') ? 'H.264' : 'Auto'}</div>
+            <div className="text-muted-foreground">•</div>
+            <div>Mode: {useVBR ? 'Variable Bitrate' : 'Constant Bitrate'}</div>
           </div>
+        </Card>
+
+        {/* Main Controls */}
+        <Card className="p-8 shadow-soft border-border/50">
+          <RecordingControls
+            isRecording={isRecording}
+            isPaused={isPaused}
+            audioEnabled={audioEnabled}
+            useVBR={useVBR}
+            onStartRecording={startRecording}
+            onPauseRecording={pauseRecording}
+            onStopRecording={stopRecording}
+            onToggleAudio={() => setAudioEnabled(!audioEnabled)}
+            onToggleVBR={() => setUseVBR(!useVBR)}
+            onBack={onBack}
+          />
         </Card>
 
         {/* Download Section */}
         {hasRecording && (
-          <Card className="p-6 border-2 border-success bg-gradient-to-r from-success/10 to-transparent">
-            <div className="text-center space-y-4">
-              <h3 className="text-xl font-semibold text-success">Recording Complete!</h3>
-              <p className="text-muted-foreground">
-                Your high-quality screen recording is ready for download.
-              </p>
-              <div className="flex items-center justify-center gap-3">
-                <Button
-                  variant="success"
-                  size="lg"
-                  onClick={downloadRecording}
-                >
-                  <Download className="w-5 h-5" />
-                  Download Recording
-                </Button>
-                <Button
-                  variant="outline"
-                  size="lg"
-                  onClick={resetRecording}
-                >
-                  New Recording
-                </Button>
+          <FormatSelector
+            selectedFormat={selectedFormat}
+            onFormatChange={setSelectedFormat}
+            onDownload={downloadRecording}
+            recordedChunks={recordedChunks}
+            recordingTime={recordingTime}
+          />
+        )}
+
+        {hasRecording && (
+          <Card className="p-6 text-center">
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={resetRecording}
+              className="min-w-[200px]"
+            >
+              Start New Recording
+            </Button>
+          </Card>
+        )}
+
+        {!hasRecording && (
+          <Card className="p-8 text-center bg-gradient-secondary border-border/50">
+            <h3 className="text-xl font-semibold mb-4">Studio-Quality Features</h3>
+            <div className="grid md:grid-cols-3 gap-6 text-sm">
+              <div>
+                <Monitor className="w-8 h-8 mx-auto mb-2 text-primary" />
+                <div className="font-medium">4K Recording</div>
+                <div className="text-muted-foreground">Ultra HD resolution</div>
+              </div>
+              <div>
+                <Zap className="w-8 h-8 mx-auto mb-2 text-primary" />
+                <div className="font-medium">Hardware Accelerated</div>
+                <div className="text-muted-foreground">Optimized encoding</div>
+              </div>
+              <div>
+                <Cpu className="w-8 h-8 mx-auto mb-2 text-primary" />
+                <div className="font-medium">Multi-Format Export</div>
+                <div className="text-muted-foreground">MP4, WebM, MOV</div>
               </div>
             </div>
           </Card>
         )}
-
-        {/* Features Grid */}
-        <div className="grid md:grid-cols-3 gap-6">
-          <Card className="p-6 text-center">
-            <Monitor className="w-12 h-12 mx-auto mb-4 text-primary" />
-            <h3 className="text-lg font-semibold mb-2">Browser Optimized</h3>
-            <p className="text-sm text-muted-foreground">
-              Automatic codec selection and hardware acceleration detection for optimal performance
-            </p>
-          </Card>
-          <Card className="p-6 text-center">
-            <Settings className="w-12 h-12 mx-auto mb-4 text-primary" />
-            <h3 className="text-lg font-semibold mb-2">Easy Controls</h3>
-            <p className="text-sm text-muted-foreground">
-              Simple start, pause, and stop controls with real-time recording status
-            </p>
-          </Card>
-          <Card className="p-6 text-center">
-            <Download className="w-12 h-12 mx-auto mb-4 text-primary" />
-            <h3 className="text-lg font-semibold mb-2">Smart Encoding</h3>
-            <p className="text-sm text-muted-foreground">
-              Variable bitrate encoding with browser-specific optimizations for best quality/size ratio
-            </p>
-          </Card>
-        </div>
       </div>
     </div>
   );
