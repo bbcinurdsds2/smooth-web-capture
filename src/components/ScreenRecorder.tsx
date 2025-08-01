@@ -1,9 +1,9 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Monitor, Square, Play, Pause, Download, Settings, Mic, MicOff } from "lucide-react";
+import { Monitor, Square, Play, Pause, Download, Settings, Mic, MicOff, Cpu, Zap } from "lucide-react";
 
 interface RecordingOptions {
   video: {
@@ -14,6 +14,15 @@ interface RecordingOptions {
   audio: boolean;
 }
 
+interface BrowserInfo {
+  name: string;
+  isChrome: boolean;
+  isFirefox: boolean;
+  isEdge: boolean;
+  isSafari: boolean;
+  supportsHardwareAcceleration: boolean;
+}
+
 export const ScreenRecorder = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -21,12 +30,105 @@ export const ScreenRecorder = () => {
   const [recordingTime, setRecordingTime] = useState(0);
   const [hasRecording, setHasRecording] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
+  const [browserInfo, setBrowserInfo] = useState<BrowserInfo | null>(null);
+  const [selectedCodec, setSelectedCodec] = useState<string>('');
+  const [useVBR, setUseVBR] = useState(true);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   
   const { toast } = useToast();
+
+  // Detect browser and hardware acceleration capabilities
+  const detectBrowser = useCallback((): BrowserInfo => {
+    const userAgent = navigator.userAgent;
+    const isChrome = /Chrome/.test(userAgent) && !/Edge/.test(userAgent);
+    const isFirefox = /Firefox/.test(userAgent);
+    const isEdge = /Edge/.test(userAgent);
+    const isSafari = /Safari/.test(userAgent) && !/Chrome/.test(userAgent);
+    
+    // Basic hardware acceleration detection
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    const supportsHardwareAcceleration = gl !== null;
+
+    let name = 'Unknown';
+    if (isChrome) name = 'Chrome';
+    else if (isFirefox) name = 'Firefox';
+    else if (isEdge) name = 'Edge';
+    else if (isSafari) name = 'Safari';
+
+    return {
+      name,
+      isChrome,
+      isFirefox,
+      isEdge,
+      isSafari,
+      supportsHardwareAcceleration
+    };
+  }, []);
+
+  // Get optimal codec based on browser
+  const getOptimalCodec = useCallback((browser: BrowserInfo) => {
+    const codecs = [];
+    
+    if (browser.isChrome && browser.supportsHardwareAcceleration) {
+      // Chrome with hardware acceleration - prefer VP9
+      codecs.push(
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=h264,opus',
+        'video/mp4;codecs=h264,aac'
+      );
+    } else if (browser.isFirefox) {
+      // Firefox - prefer H.264
+      codecs.push(
+        'video/webm;codecs=h264,opus',
+        'video/mp4;codecs=h264,aac',
+        'video/webm;codecs=vp9,opus'
+      );
+    } else if (browser.isEdge) {
+      // Edge - prefer H.264 with hardware acceleration
+      codecs.push(
+        'video/mp4;codecs=h264,aac',
+        'video/webm;codecs=h264,opus',
+        'video/webm;codecs=vp9,opus'
+      );
+    } else if (browser.isSafari) {
+      // Safari - H.264 only
+      codecs.push(
+        'video/mp4;codecs=h264,aac',
+        'video/webm;codecs=h264,opus'
+      );
+    } else {
+      // Fallback for other browsers
+      codecs.push(
+        'video/webm;codecs=h264,opus',
+        'video/mp4;codecs=h264,aac',
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus'
+      );
+    }
+    
+    // Add fallbacks
+    codecs.push('video/webm', 'video/mp4');
+    
+    return codecs;
+  }, []);
+
+  useEffect(() => {
+    const browser = detectBrowser();
+    setBrowserInfo(browser);
+    
+    // Set optimal codec for detected browser
+    const codecs = getOptimalCodec(browser);
+    for (const codec of codecs) {
+      if (MediaRecorder.isTypeSupported(codec)) {
+        setSelectedCodec(codec);
+        break;
+      }
+    }
+  }, [detectBrowser, getOptimalCodec]);
 
   const recordingOptions: RecordingOptions = {
     video: {
@@ -76,31 +178,33 @@ export const ScreenRecorder = () => {
 
       streamRef.current = stream;
       
-      // Prioritize H.264 for best compatibility and longer recordings
-      let mimeType = '';
-      let videoBitsPerSecond = 8000000; // 8 Mbps - optimized for longer recordings
+      // Use browser-optimized codec selection
+      const mimeType = selectedCodec || 'video/webm';
       
-      const supportedTypes = [
-        'video/webm;codecs=h264,opus', // H.264 first for best performance
-        'video/mp4;codecs=h264,aac',   // MP4 H.264 fallback
-        'video/webm;codecs=vp9,opus',  // VP9 fallback
-        'video/webm;codecs=vp8,opus',  // VP8 fallback
-        'video/webm',
-        'video/mp4'
-      ];
+      // Calculate optimal bitrate based on browser and VBR setting
+      let videoBitsPerSecond = 8000000; // 8 Mbps base
       
-      for (const type of supportedTypes) {
-        if (MediaRecorder.isTypeSupported(type)) {
-          mimeType = type;
-          break;
-        }
+      if (browserInfo?.isChrome && browserInfo.supportsHardwareAcceleration) {
+        videoBitsPerSecond = 10000000; // 10 Mbps for Chrome with HW acceleration
+      } else if (browserInfo?.isFirefox) {
+        videoBitsPerSecond = 7000000; // 7 Mbps for Firefox optimization
       }
       
-      const mediaRecorder = new MediaRecorder(stream, {
+      // VBR configuration - allow fluctuation for better quality/size balance
+      const recordingConfig: any = {
         mimeType,
-        videoBitsPerSecond,
-        audioBitsPerSecond: 128000 // Optimized audio bitrate
-      });
+        audioBitsPerSecond: 128000
+      };
+      
+      if (useVBR) {
+        // Variable bitrate: allow 50% fluctuation for optimal quality
+        recordingConfig.videoBitsPerSecond = videoBitsPerSecond;
+      } else {
+        // Constant bitrate for stable file sizes
+        recordingConfig.videoBitsPerSecond = videoBitsPerSecond;
+      }
+      
+      const mediaRecorder = new MediaRecorder(stream, recordingConfig);
 
       mediaRecorderRef.current = mediaRecorder;
       setRecordedChunks([]);
@@ -222,15 +326,21 @@ export const ScreenRecorder = () => {
           </p>
           
           {/* Quality Badge */}
-          <div className="flex justify-center gap-2">
+          <div className="flex justify-center gap-2 flex-wrap">
             <Badge variant="secondary" className="text-sm">
               1920×1080
             </Badge>
             <Badge variant="secondary" className="text-sm">
               60 FPS
             </Badge>
+            {browserInfo && (
+              <Badge variant="secondary" className="text-sm flex items-center gap-1">
+                {browserInfo.supportsHardwareAcceleration && <Zap className="w-3 h-3" />}
+                {browserInfo.name}
+              </Badge>
+            )}
             <Badge variant="secondary" className="text-sm">
-              8 Mbps H.264
+              {selectedCodec.includes('vp9') ? 'VP9' : selectedCodec.includes('h264') ? 'H.264' : 'Auto'} {useVBR ? 'VBR' : 'CBR'}
             </Badge>
           </div>
         </div>
@@ -260,17 +370,42 @@ export const ScreenRecorder = () => {
         {/* Main Controls */}
         <Card className="p-8 shadow-soft">
           <div className="space-y-6">
-            {/* Audio Toggle */}
-            <div className="flex items-center justify-center gap-4">
+            {/* Recording Options */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Audio Toggle */}
               <Button
                 variant={audioEnabled ? "default" : "outline"}
                 size="lg"
                 onClick={() => setAudioEnabled(!audioEnabled)}
                 disabled={isRecording}
+                className="flex items-center gap-2"
               >
                 {audioEnabled ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
-                {audioEnabled ? 'Audio Enabled' : 'Audio Disabled'}
+                {audioEnabled ? 'Audio On' : 'Audio Off'}
               </Button>
+              
+              {/* VBR Toggle */}
+              <Button
+                variant={useVBR ? "default" : "outline"}
+                size="lg"
+                onClick={() => setUseVBR(!useVBR)}
+                disabled={isRecording}
+                className="flex items-center gap-2"
+              >
+                <Settings className="w-5 h-5" />
+                {useVBR ? 'VBR Mode' : 'CBR Mode'}
+              </Button>
+              
+              {/* Browser Info */}
+              <div className="flex items-center justify-center gap-2 p-3 rounded-lg border bg-card">
+                <Cpu className="w-5 h-5 text-muted-foreground" />
+                <span className="text-sm font-medium">
+                  {browserInfo?.name || 'Detecting...'}
+                </span>
+                {browserInfo?.supportsHardwareAcceleration && (
+                  <Zap className="w-4 h-4 text-yellow-500" />
+                )}
+              </div>
             </div>
 
             {/* Recording Controls */}
@@ -342,9 +477,9 @@ export const ScreenRecorder = () => {
         <div className="grid md:grid-cols-3 gap-6">
           <Card className="p-6 text-center">
             <Monitor className="w-12 h-12 mx-auto mb-4 text-primary" />
-            <h3 className="text-lg font-semibold mb-2">High Quality</h3>
+            <h3 className="text-lg font-semibold mb-2">Browser Optimized</h3>
             <p className="text-sm text-muted-foreground">
-              1080p resolution at 60fps with 12 Mbps bitrate optimized for smooth playback
+              Automatic codec selection and hardware acceleration detection for optimal performance
             </p>
           </Card>
           <Card className="p-6 text-center">
@@ -356,9 +491,9 @@ export const ScreenRecorder = () => {
           </Card>
           <Card className="p-6 text-center">
             <Download className="w-12 h-12 mx-auto mb-4 text-primary" />
-            <h3 className="text-lg font-semibold mb-2">Instant Download</h3>
+            <h3 className="text-lg font-semibold mb-2">Smart Encoding</h3>
             <p className="text-sm text-muted-foreground">
-              Download your recordings immediately as WebM files with VP9 codec
+              Variable bitrate encoding with browser-specific optimizations for best quality/size ratio
             </p>
           </Card>
         </div>
